@@ -1,13 +1,17 @@
 /**
  * Dashboard - SQL Workbench + Schema Explorer.
- * Purpose: Execute simple SQL queries and inspect schema reference.
+ * Purpose: Execute SELECT queries (incl. JOINs) via RPC and inspect schema reference.
  */
 import { useMemo, useState } from 'react'
 import { useSupabase } from '../hooks/useSupabase'
+import { useExecuteSql } from '../hooks/useExecuteSql'
 import styles from './Dashboard.module.css'
 
 const ALLOWED_TABLES = ['content', 'genres', 'profiles', 'subscription_tiers', 'watch_history']
-const DEFAULT_SQL = 'SELECT * FROM content LIMIT 10;'
+const DEFAULT_SQL = `SELECT c.title, g.name AS genero
+FROM content c
+JOIN genres g ON c.genre_id = g.id
+LIMIT 50;`
 const TABLE_SCHEMAS = {
   content: [
     { name: 'id', type: 'uuid' },
@@ -43,18 +47,14 @@ const TABLE_SCHEMAS = {
 
 export default function Dashboard() {
   const [sql, setSql] = useState(DEFAULT_SQL)
-  const [status, setStatus] = useState(null)
-  const [message, setMessage] = useState('Ejecuta una consulta para ver resultados.')
-  const [queryConfig, setQueryConfig] = useState({ table: null, limit: 10 })
-  const [selectedTable, setSelectedTable] = useState(null)
+  const [hasExecuted, setHasExecuted] = useState(false)
 
   const {
     data: rows,
     loading: rowsLoading,
     error: rowsError,
-  } = useSupabase(queryConfig.table, {}, null, queryConfig.limit, {
-    enabled: Boolean(queryConfig.table),
-  })
+    execute,
+  } = useExecuteSql()
 
   const contentSchema = useSupabase('content', {}, null, 1)
   const genresSchema = useSupabase('genres', {}, null, 1)
@@ -109,30 +109,13 @@ export default function Dashboard() {
     tiersSchema.error ||
     historySchema.error
 
-  const handleExecute = () => {
-    const normalized = sql.trim().replace(/\s+/g, ' ')
-    const match = normalized.match(/^select \* from ([a-z_]+)(?: limit (\d+))?;?$/i)
-
-    if (!match) {
-      setStatus('error')
-      setMessage('Query no soportada. Usa el formato: SELECT * FROM <tabla> [LIMIT n];')
+  const handleExecute = async () => {
+    const trimmed = sql.trim()
+    if (!trimmed) {
       return
     }
-
-    const tableName = match[1]
-    const parsedLimit = match[2] ? Number(match[2]) : 50
-
-    if (!ALLOWED_TABLES.includes(tableName)) {
-      setStatus('error')
-      setMessage(`La tabla "${tableName}" no está disponible en este workbench.`)
-      return
-    }
-
-    const safeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50
-    setSelectedTable(tableName)
-    setQueryConfig({ table: tableName, limit: safeLimit })
-    setStatus('success')
-    setMessage(`Ejecutando query en "${tableName}"...`)
+    setHasExecuted(true)
+    await execute(trimmed)
   }
 
   const renderStatusMessage = () => {
@@ -144,26 +127,26 @@ export default function Dashboard() {
       )
     }
 
-    if (!status) {
-      return <div className={styles.statusHint}>{message}</div>
-    }
-
     if (rowsLoading) {
       return <div className={styles.statusHint}>Ejecutando query...</div>
     }
 
-    if (selectedTable) {
+    if (hasExecuted && !rowsError) {
       return (
         <div className={`${styles.status} ${styles.success}`}>
           <strong>Success:</strong>{' '}
           {rows.length > 0
-            ? `${rows.length} fila(s) obtenidas de "${selectedTable}".`
-            : `La query se ejecutó correctamente en "${selectedTable}" (sin filas).`}
+            ? `${rows.length} fila(s) devueltas.`
+            : 'Consulta ejecutada (0 filas).'}
         </div>
       )
     }
 
-    return <div className={styles.statusHint}>{message}</div>
+    return (
+      <div className={styles.statusHint}>
+        Pulsa Execute para ejecutar el SQL (SELECT o WITH … SELECT; también JOINs y alias).
+      </div>
+    )
   }
 
   return (
@@ -197,7 +180,11 @@ export default function Dashboard() {
             {rowsLoading ? (
               <div className={styles.emptyState}>Cargando resultados...</div>
             ) : rows.length === 0 ? (
-              <div className={styles.emptyState}>No hay resultados para mostrar.</div>
+              <div className={styles.emptyState}>
+                {hasExecuted && !rowsError
+                  ? 'La consulta no devolvió filas.'
+                  : 'No hay resultados para mostrar.'}
+              </div>
             ) : (
               <table className={styles.resultsTable}>
                 <thead>
