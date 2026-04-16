@@ -48,3 +48,6 @@ COMMENT ON FUNCTION public.run_sql_workbench(text) IS
   'Workbench: ejecuta un SELECT y devuelve filas como jsonb (array de objetos).';
 
 GRANT EXECUTE ON FUNCTION public.run_sql_workbench(text) TO anon, authenticated;
+
+-- Recarga la caché de esquema de PostgREST (API REST) para que aparezca la RPC sin esperar
+SELECT pg_notify('pgrst', 'reload schema');
