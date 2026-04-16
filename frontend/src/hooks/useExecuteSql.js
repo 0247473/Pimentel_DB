@@ -1,6 +1,6 @@
 /**
  * Ejecuta SQL de solo lectura vía RPC en Supabase (run_sql_workbench).
- * Los componentes no deben llamar a supabase.rpc directamente; usan este hook.
+ * Parámetro RPC: sql_text (debe coincidir con supabase/migrations/002_sql_workbench_rpc.sql).
  */
 import { useState, useCallback } from 'react'
 import { supabase } from '../services/supabase'
@@ -31,9 +31,17 @@ export function useExecuteSql() {
     setError(null)
     try {
       const { data: raw, error: err } = await supabase.rpc(RPC_NAME, {
-        p_query: queryText,
+        sql_text: queryText,
       })
-      if (err) throw err
+      if (err) {
+        const msg = err.message || String(err)
+        if (/schema cache|Could not find the function|PGRST202/i.test(msg)) {
+          throw new Error(
+            `${msg} — Ejecuta en Supabase SQL Editor el archivo supabase/migrations/002_sql_workbench_rpc.sql (incluye NOTIFY de recarga), guarda y recarga esta app.`
+          )
+        }
+        throw err
+      }
       setData(normalizeRpcRows(raw))
     } catch (err) {
       setError(err)
