@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.*.local
+*.env
+frontend/.env.local
+ml-api/.env
+
+# Build outputs
+dist/
+build/
+frontend/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ml-api/venv/
+.env/
+
+# ML model - comentar para incluir model.pkl en el repo (necesario para Render)
+# Si quieres excluir model.pkl del repo, descomenta la siguiente línea:
+# ml-api/model/model.pkl
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

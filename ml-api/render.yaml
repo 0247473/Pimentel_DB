@@ -1,0 +1,12 @@
+# ml-api/render.yaml
+
+services:
+  - type: web
+    name: eduinsights-ml-api
+    env: python
+    rootDir: ml-api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 8000

@@ -1,0 +1,34 @@
+---
+description: Cursor rules for cursor-supabase-app data visualization project
+alwaysApply: true
+---
+
+# cursor-supabase-app Project Rules
+
+## Tech Stack Context
+- Data visualization app using React 18 + Vite + Recharts + Supabase
+- JavaScript only — never suggest TypeScript migration
+
+## Data Access
+- All database queries go through the `useSupabase` hook
+- Never fetch Supabase directly in components
+
+## Chart Components
+- All chart components live in `src/components/charts/`
+- Standard props: `data` (array), `xKey` (string), `yKey` (string), `title` (string), `color` (string)
+- When adding a new data visualization: add it to Dashboard.jsx AND export from charts index
+
+## Configuration
+- ML API base URL: `import.meta.env.VITE_ML_API_URL` — never hardcoded
+- Supabase table/column names: from env vars or constants — never hardcoded strings
+
+## Dependencies
+- Never install new npm packages without asking the user first
+
+## Components
+- All components must be functional components with hooks — no class components
+- CSS in `.module.css` files colocated with components — no inline styles except dynamic values
+- Keep components under 150 lines; split into smaller components if needed
+
+## Data Fetching
+- Always handle loading, error, and success states in components that fetch data
