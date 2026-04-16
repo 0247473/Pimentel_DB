@@ -12,25 +12,35 @@
  * const { data } = useSupabase('orders', { status: 'pending' })
  *
  * @example
- * // With order and limit
- * const { data } = useSupabase('events', null, { column: 'created_at', ascending: false }, 50)
+ * // With order, limit and custom select
+ * const { data } = useSupabase('events', {}, { column: 'created_at', ascending: false }, 50, {
+ *   select: 'id,name,created_at',
+ * })
  *
  * @param {string} tableName - Supabase table name
  * @param {Object} [filters] - Optional. { key: value } pairs for .eq filters
  * @param {Object} [order] - Optional. { column, ascending } for .order()
  * @param {number} [limit] - Optional. Max rows to return
+ * @param {Object} [options] - Optional. { select, enabled, inFilters, gteFilters, lteFilters }
  * @returns {{ data: any[], loading: boolean, error: Error|null, refetch: () => Promise<void> }}
  */
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../services/supabase'
 
-export function useSupabase(tableName, filters = {}, order = null, limit = null) {
+export function useSupabase(tableName, filters = {}, order = null, limit = null, options = {}) {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const {
+    select = '*',
+    enabled = true,
+    inFilters = {},
+    gteFilters = {},
+    lteFilters = {},
+  } = options
 
   const fetchData = useCallback(async () => {
-    if (!tableName) {
+    if (!tableName || !enabled) {
       setData([])
       setLoading(false)
       return
@@ -40,12 +50,27 @@ export function useSupabase(tableName, filters = {}, order = null, limit = null)
     setError(null)
 
     try {
-      let query = supabase.from(tableName).select('*')
+      let query = supabase.from(tableName).select(select)
 
       // Apply filters
       Object.entries(filters).forEach(([key, value]) => {
         if (value != null && value !== '') {
           query = query.eq(key, value)
+        }
+      })
+      Object.entries(inFilters).forEach(([key, values]) => {
+        if (Array.isArray(values) && values.length > 0) {
+          query = query.in(key, values)
+        }
+      })
+      Object.entries(gteFilters).forEach(([key, value]) => {
+        if (value != null && value !== '') {
+          query = query.gte(key, value)
+        }
+      })
+      Object.entries(lteFilters).forEach(([key, value]) => {
+        if (value != null && value !== '') {
+          query = query.lte(key, value)
         }
       })
 
@@ -67,7 +92,18 @@ export function useSupabase(tableName, filters = {}, order = null, limit = null)
     } finally {
       setLoading(false)
     }
-  }, [tableName, JSON.stringify(filters), order?.column, order?.ascending, limit])
+  }, [
+    tableName,
+    select,
+    enabled,
+    JSON.stringify(filters),
+    JSON.stringify(inFilters),
+    JSON.stringify(gteFilters),
+    JSON.stringify(lteFilters),
+    order?.column,
+    order?.ascending,
+    limit,
+  ])
 
   useEffect(() => {
     fetchData()

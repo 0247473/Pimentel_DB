@@ -1,174 +1,256 @@
 /**
- * Dashboard - EduInsights main dashboard page.
- * Purpose: Executive overview with KPIs and charts as defined in the PRD.
- * Note: Uses mock data until Supabase is connected.
+ * Dashboard - SQL Workbench + Schema Explorer.
+ * Purpose: Execute simple SQL queries and inspect schema reference.
  */
-import { BarChartWidget, PieChartWidget, ScatterChartWidget } from '../components/charts'
-import KpiCard from '../components/ui/KpiCard'
-import LoadingSpinner from '../components/ui/LoadingSpinner'
+import { useMemo, useState } from 'react'
+import { useSupabase } from '../hooks/useSupabase'
 import styles from './Dashboard.module.css'
 
-// const { data, loading, error } = useSupabase('students') will replace mocks later.
-
-const MOCK_TOTAL_STUDENTS = 1000
-const MOCK_AVG_MATH = 66.4
-const MOCK_PASS_RATE = 0.65
-const MOCK_PREP_DELTA = 8.2
-
-const MOCK_KPIS = [
-  {
-    title: 'Promedio Matemáticas',
-    value: `${MOCK_AVG_MATH.toFixed(1)}`,
-    subtitle: 'sobre 100 puntos',
-    icon: '📐',
-  },
-  {
-    title: 'Tasa de Aprobación',
-    value: `${Math.round(MOCK_PASS_RATE * 100)}%`,
-    subtitle: 'estudiantes con score ≥ 60',
-    icon: '✅',
-    color: MOCK_PASS_RATE > 0.6 ? 'success' : 'danger',
-  },
-  {
-    title: 'Mejora con Prep Course',
-    value: `+${MOCK_PREP_DELTA.toFixed(1)} pts`,
-    subtitle: 'vs estudiantes sin preparación',
-    icon: '📚',
-    color: 'success',
-  },
-  {
-    title: 'Total Estudiantes',
-    value: MOCK_TOTAL_STUDENTS.toLocaleString('es-ES'),
-    subtitle: 'en el dataset',
-    icon: '👥',
-  },
-]
-
-// Mock aggregates aligned with PRD visualizations
-const MOCK_PARENTAL_EDU = [
-  { parental_education: "some high school", avg_math_score: 60 },
-  { parental_education: 'high school', avg_math_score: 62 },
-  { parental_education: 'some college', avg_math_score: 65 },
-  { parental_education: "associate's degree", avg_math_score: 67 },
-  { parental_education: "bachelor's degree", avg_math_score: 70 },
-  { parental_education: "master's degree", avg_math_score: 73 },
-]
-
-const MOCK_GENDER_SUBJECTS = [
-  { gender: 'female', math: 66, reading: 74, writing: 73 },
-  { gender: 'male', math: 67, reading: 69, writing: 66 },
-]
-
-const MOCK_SCATTER_PREP = [
-  { reading_score: 72, writing_score: 68, test_prep: 'completed' },
-  { reading_score: 65, writing_score: 62, test_prep: 'completed' },
-  { reading_score: 80, writing_score: 78, test_prep: 'completed' },
-  { reading_score: 55, writing_score: 54, test_prep: 'none' },
-  { reading_score: 60, writing_score: 58, test_prep: 'none' },
-  { reading_score: 48, writing_score: 50, test_prep: 'none' },
-]
-
-const MOCK_ETHNICITY_DIST = [
-  { ethnicity: 'group A', count: 190 },
-  { ethnicity: 'group B', count: 200 },
-  { ethnicity: 'group C', count: 210 },
-  { ethnicity: 'group D', count: 190 },
-  { ethnicity: 'group E', count: 210 },
-]
+const ALLOWED_TABLES = ['content', 'genres', 'profiles', 'subscription_tiers', 'watch_history']
+const DEFAULT_SQL = 'SELECT * FROM content LIMIT 10;'
+const TABLE_SCHEMAS = {
+  content: [
+    { name: 'id', type: 'uuid' },
+    { name: 'title', type: 'text' },
+    { name: 'release_year', type: 'integer' },
+    { name: 'genre_id', type: 'uuid' },
+    { name: 'duration_minutes', type: 'integer' },
+  ],
+  genres: [
+    { name: 'id', type: 'uuid' },
+    { name: 'name', type: 'text' },
+  ],
+  profiles: [
+    { name: 'id', type: 'uuid' },
+    { name: 'user_id', type: 'uuid' },
+    { name: 'display_name', type: 'text' },
+    { name: 'age_rating', type: 'text' },
+  ],
+  subscription_tiers: [
+    { name: 'id', type: 'uuid' },
+    { name: 'tier_name', type: 'text' },
+    { name: 'price_usd', type: 'numeric' },
+    { name: 'max_screens', type: 'integer' },
+  ],
+  watch_history: [
+    { name: 'id', type: 'uuid' },
+    { name: 'profile_id', type: 'uuid' },
+    { name: 'content_id', type: 'uuid' },
+    { name: 'watched_at', type: 'timestamp' },
+    { name: 'progress_pct', type: 'integer' },
+  ],
+}
 
 export default function Dashboard() {
-  const loading = false
-  const error = null
+  const [sql, setSql] = useState(DEFAULT_SQL)
+  const [status, setStatus] = useState(null)
+  const [message, setMessage] = useState('Ejecuta una consulta para ver resultados.')
+  const [queryConfig, setQueryConfig] = useState({ table: null, limit: 10 })
+  const [selectedTable, setSelectedTable] = useState(null)
 
-  if (error) {
-    return <div>Error al cargar datos: {error.message}</div>
+  const {
+    data: rows,
+    loading: rowsLoading,
+    error: rowsError,
+  } = useSupabase(queryConfig.table, {}, null, queryConfig.limit, {
+    enabled: Boolean(queryConfig.table),
+  })
+
+  const contentSchema = useSupabase('content', {}, null, 1)
+  const genresSchema = useSupabase('genres', {}, null, 1)
+  const profilesSchema = useSupabase('profiles', {}, null, 1)
+  const tiersSchema = useSupabase('subscription_tiers', {}, null, 1)
+  const historySchema = useSupabase('watch_history', {}, null, 1)
+
+  const columns = useMemo(() => {
+    if (!rows || rows.length === 0) return []
+    return Object.keys(rows[0])
+  }, [rows])
+
+  const schemaEntries = useMemo(() => {
+    const byTableRows = {
+      content: contentSchema.data,
+      genres: genresSchema.data,
+      profiles: profilesSchema.data,
+      subscription_tiers: tiersSchema.data,
+      watch_history: historySchema.data,
+    }
+
+    return ALLOWED_TABLES.map((tableName) => {
+      const firstRow = byTableRows[tableName]?.[0]
+      if (firstRow) {
+        const inferred = Object.keys(firstRow).map((name) => ({
+          name,
+          type: typeof firstRow[name],
+        }))
+        return [tableName, inferred]
+      }
+      return [tableName, TABLE_SCHEMAS[tableName] || []]
+    })
+  }, [
+    contentSchema.data,
+    genresSchema.data,
+    profilesSchema.data,
+    tiersSchema.data,
+    historySchema.data,
+  ])
+
+  const schemaLoading =
+    contentSchema.loading ||
+    genresSchema.loading ||
+    profilesSchema.loading ||
+    tiersSchema.loading ||
+    historySchema.loading
+
+  const schemaError =
+    contentSchema.error ||
+    genresSchema.error ||
+    profilesSchema.error ||
+    tiersSchema.error ||
+    historySchema.error
+
+  const handleExecute = () => {
+    const normalized = sql.trim().replace(/\s+/g, ' ')
+    const match = normalized.match(/^select \* from ([a-z_]+)(?: limit (\d+))?;?$/i)
+
+    if (!match) {
+      setStatus('error')
+      setMessage('Query no soportada. Usa el formato: SELECT * FROM <tabla> [LIMIT n];')
+      return
+    }
+
+    const tableName = match[1]
+    const parsedLimit = match[2] ? Number(match[2]) : 50
+
+    if (!ALLOWED_TABLES.includes(tableName)) {
+      setStatus('error')
+      setMessage(`La tabla "${tableName}" no está disponible en este workbench.`)
+      return
+    }
+
+    const safeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50
+    setSelectedTable(tableName)
+    setQueryConfig({ table: tableName, limit: safeLimit })
+    setStatus('success')
+    setMessage(`Ejecutando query en "${tableName}"...`)
+  }
+
+  const renderStatusMessage = () => {
+    if (rowsError) {
+      return (
+        <div className={`${styles.status} ${styles.error}`}>
+          <strong>Error:</strong> {rowsError.message}
+        </div>
+      )
+    }
+
+    if (!status) {
+      return <div className={styles.statusHint}>{message}</div>
+    }
+
+    if (rowsLoading) {
+      return <div className={styles.statusHint}>Ejecutando query...</div>
+    }
+
+    if (selectedTable) {
+      return (
+        <div className={`${styles.status} ${styles.success}`}>
+          <strong>Success:</strong>{' '}
+          {rows.length > 0
+            ? `${rows.length} fila(s) obtenidas de "${selectedTable}".`
+            : `La query se ejecutó correctamente en "${selectedTable}" (sin filas).`}
+        </div>
+      )
+    }
+
+    return <div className={styles.statusHint}>{message}</div>
   }
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Dashboard de Rendimiento</h1>
-        <p className={styles.subtitle}>Análisis general del dataset de 1,000 estudiantes</p>
+        <h1 className={styles.title}>SQL Workbench</h1>
+        <p className={styles.subtitle}>
+          Ejecuta consultas SQL y usa el esquema como referencia rápida.
+        </p>
       </header>
 
-      <section className={styles.kpiGrid}>
-        {MOCK_KPIS.map((kpi) => (
-          <KpiCard key={kpi.title} {...kpi} />
-        ))}
+      <section className={styles.layout}>
+        <article className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Workbench</h2>
+            <button className={styles.executeButton} onClick={handleExecute}>
+              Execute
+            </button>
+          </div>
+
+          <textarea
+            className={styles.editor}
+            value={sql}
+            onChange={(event) => setSql(event.target.value)}
+            placeholder="SELECT * FROM content LIMIT 10;"
+          />
+
+          {renderStatusMessage()}
+
+          <div className={styles.tableWrap}>
+            {rowsLoading ? (
+              <div className={styles.emptyState}>Cargando resultados...</div>
+            ) : rows.length === 0 ? (
+              <div className={styles.emptyState}>No hay resultados para mostrar.</div>
+            ) : (
+              <table className={styles.resultsTable}>
+                <thead>
+                  <tr>
+                    {columns.map((column) => (
+                      <th key={column}>{column}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, index) => (
+                    <tr key={`${row.id ?? 'row'}-${index}`}>
+                      {columns.map((column) => (
+                        <td key={`${column}-${index}`}>{String(row[column] ?? '')}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </article>
+
+        <aside className={styles.panel}>
+          <h2 className={styles.panelTitle}>Schema Explorer</h2>
+          <p className={styles.schemaSubtitle}>Tablas y tipos para referencia rápida.</p>
+
+          {schemaError && (
+            <div className={`${styles.status} ${styles.error}`}>
+              <strong>Error:</strong> {schemaError.message}
+            </div>
+          )}
+
+          {schemaLoading && <div className={styles.statusHint}>Cargando esquema...</div>}
+
+          <div className={styles.schemaList}>
+            {schemaEntries.map(([tableName, tableColumns]) => (
+              <section key={tableName} className={styles.schemaCard}>
+                <h3 className={styles.schemaTitle}>{tableName}</h3>
+                <ul className={styles.schemaColumns}>
+                  {tableColumns.length === 0 && <li>Sin columnas visibles.</li>}
+                  {tableColumns.map((column) => (
+                    <li key={`${tableName}-${column.name}`}>
+                      <span className={styles.columnName}>{column.name}</span>
+                      <span className={styles.columnType}>{column.type}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </aside>
       </section>
-
-      {loading ? (
-        <LoadingSpinner />
-      ) : (
-        <>
-          {/* Fila 1: dos charts */}
-          <section className={styles.chartsRow}>
-            <div className={styles.chartCard}>
-              <h2 className={styles.chartTitle}>Rendimiento por Educación Familiar</h2>
-              <p className={styles.chartSubtitle}>
-                Promedio de math_score agrupado por nivel educativo de los padres
-              </p>
-              <BarChartWidget
-                data={MOCK_PARENTAL_EDU}
-                xKey="parental_education"
-                yKey="avg_math_score"
-                layout="vertical"
-                color="var(--color-primary)"
-                height={280}
-              />
-            </div>
-
-            <div className={styles.chartCard}>
-              <h2 className={styles.chartTitle}>Comparación de Scores por Materia</h2>
-              <p className={styles.chartSubtitle}>
-                Promedio de math, reading y writing por género
-              </p>
-              <BarChartWidget
-                data={MOCK_GENDER_SUBJECTS}
-                xKey="gender"
-                layout="horizontal"
-                series={[
-                  { dataKey: 'math', color: '#4f46e5', name: 'Math' },
-                  { dataKey: 'reading', color: '#10b981', name: 'Reading' },
-                  { dataKey: 'writing', color: '#f59e0b', name: 'Writing' },
-                ]}
-                height={280}
-              />
-            </div>
-          </section>
-
-          {/* Fila 2: 60/40 */}
-          <section className={styles.chartsRowBottom}>
-            <div className={styles.chartCard}>
-              <h2 className={styles.chartTitle}>Reading vs Writing Score</h2>
-              <p className={styles.chartSubtitle}>Coloreado por completar curso de preparación</p>
-              <ScatterChartWidget
-                data={MOCK_SCATTER_PREP}
-                xKey="reading_score"
-                yKey="writing_score"
-                categoryKey="test_prep"
-                series={[
-                  { value: 'completed', color: '#4f46e5', name: 'Completó prep' },
-                  { value: 'none', color: '#94a3b8', name: 'Sin prep' },
-                ]}
-                height={280}
-              />
-            </div>
-
-            <div className={styles.chartCard}>
-              <h2 className={styles.chartTitle}>Distribución por Grupo Étnico</h2>
-              <p className={styles.chartSubtitle}>Porcentaje de estudiantes por grupo</p>
-              <PieChartWidget
-                data={MOCK_ETHNICITY_DIST}
-                nameKey="ethnicity"
-                valueKey="count"
-                title=""
-                height={280}
-              />
-            </div>
-          </section>
-        </>
-      )}
     </div>
   )
 }

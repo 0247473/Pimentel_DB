@@ -16,13 +16,10 @@ export default function Navbar() {
       </Link>
       <div className={styles.links}>
         <Link to="/" className={styles.link}>
-          Dashboard
+          Workbench
         </Link>
         <Link to="/explorer" className={styles.link}>
-          Explorador de Datos
-        </Link>
-        <Link to="/predictor" className={styles.link}>
-          Predictor ML
+          Schema Explorer
         </Link>
       </div>
     </nav>
